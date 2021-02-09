@@ -4,3 +4,10 @@ export type City = {
   name: string;
   subcountry: string;
 };
+
+export type PaginatedResult<T> = {
+  total: number;
+  take: number;
+  skip: number;
+  items: T[];
+};

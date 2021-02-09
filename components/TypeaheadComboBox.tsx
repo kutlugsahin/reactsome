@@ -1,60 +1,29 @@
 import { useEffect, useState } from "react";
-import { City } from "../interfaces";
-import { cities } from "../utils/sample-data";
+import { PaginatedResult } from "../interfaces";
+import { CancellablePromise } from "../utils/api";
 
-type PaginatedResult<T> = {
-  total: number;
-  take: number;
-  skip: number;
-  items: T[];
-};
-const take = 5;
-
-const findCities = async (filter: string, skip: number, take: number) => {
-  console.log(filter + " " + skip);
-  if (!filter) {
-    return Promise.resolve({
-      total: 0,
-      take: 0,
-      skip: 0,
-      items: [],
-    });
-  }
-
-  return new Promise<PaginatedResult<City>>((resolve) => {
-    setTimeout(() => {
-      const filtered = cities
-        .filter((c) => c.name.toLowerCase().indexOf(filter.toLowerCase()) >= 0)
-        .sort((a, b) => (a.name > b.name ? 1 : -1));
-      resolve({
-        total: filtered.length,
-        take,
-        skip,
-        items: filtered.slice(skip, skip + take),
-      });
-    }, 1000);
-  });
-};
-
-function SelectedItem(props: {
-  city?: City;
-  onSelectedCityCancelled: () => void;
+function SelectedItem<T>(props: {
+  item?: T;
+  getLabel: (item: T) => React.ReactNode;
+  onSelectedItemCancelled: () => void;
 }) {
   return (
     <div>
-      {props.city && (
+      {props.item && (
         <div>
-          <span>{props.city.name}</span>
-          <button onClick={props.onSelectedCityCancelled}>x</button>
+          <span>{props.getLabel(props.item)}</span>
+          <button onClick={props.onSelectedItemCancelled}>x</button>
         </div>
       )}
     </div>
   );
 }
 
-function TypeaheadList(props: {
-  items: City[];
-  onCitySelected: (city: City) => void;
+function TypeaheadList<T>(props: {
+  items: T[];
+  onItemSelected: (item: T) => void;
+  getLabel: (item: T) => React.ReactNode;
+  getId: (item: T) => string;
 }) {
   if (props.items.length === 0) {
     return <span>No matching item</span>;
@@ -63,19 +32,28 @@ function TypeaheadList(props: {
     <ul>
       {props.items.map((item) => (
         <li
-          key={item.geonameid}
+          key={props.getId(item)}
           onClick={() => {
-            props.onCitySelected(item);
+            props.onItemSelected(item);
           }}
         >
-          {item.name}
+          {props.getLabel(item)}
         </li>
       ))}
     </ul>
   );
 }
 
-export function TypeaheadComboBox() {
+export function TypeaheadComboBox<T>(props: {
+  getLabel: (item: T) => React.ReactNode;
+  getId: (item: T) => string;
+  fetchData: (
+    filter: string,
+    skip: number,
+    take: number
+  ) => CancellablePromise<PaginatedResult<T>>;
+  pageSize: number;
+}) {
   const [filter, setFilter] = useState("");
   const [skip, setSkip] = useState(0);
   const [editMode, setEditMode] = useState(true);
@@ -85,52 +63,59 @@ export function TypeaheadComboBox() {
     items: [],
     take: 0,
     skip: 0,
-  } as PaginatedResult<City>);
-  const [selectedCity, setSelectedCity] = useState<City>();
+  } as PaginatedResult<T>);
+  const [selectedItem, setSelectedItem] = useState<T>();
   const [debouncer, setDebouncer] = useState<NodeJS.Timeout>();
   useEffect(() => {
+    let fetcher: CancellablePromise<PaginatedResult<T>>;
     if (debouncer) {
       clearTimeout(debouncer);
     }
     setDebouncer(
       setTimeout(async () => {
         setLoadingMode(true);
-        setPagination(await findCities(filter, skip, take));
-        setLoadingMode(false);
+        fetcher = props.fetchData(filter, skip, props.pageSize);
+        fetcher.then(setPagination);
       }, 250)
     );
+
+    return () => {
+      fetcher?.cancel();
+    };
   }, [filter, skip]);
   return (
     <div>
       {editMode && (
         <input
           placeholder="Type to list suggestions"
-          readOnly={loadingMode}
           value={filter}
           onChange={(e) => {
             setFilter(e.target.value);
             setSkip(0);
-            setSelectedCity(undefined);
+            setSelectedItem(undefined);
           }}
         />
       )}
       <SelectedItem
-        city={selectedCity}
-        onSelectedCityCancelled={() => {
+        item={selectedItem}
+        onSelectedItemCancelled={() => {
           setEditMode(true);
-          setSelectedCity(undefined);
+          setSelectedItem(undefined);
         }}
+        getLabel={props.getLabel}
       />
       {!loadingMode && filter && editMode && (
         <div>
           <TypeaheadList
             items={pagination.items}
-            onCitySelected={(city) => {
+            onItemSelected={(item) => {
               setEditMode(false);
-              setSelectedCity(city);
+              setSelectedItem(item);
             }}
+            getLabel={props.getLabel}
+            getId={props.getId}
           />
-          {pagination.total > take && (
+          {pagination.total > props.pageSize && (
             <div>
               <span>
                 {pagination.skip + 1}..
@@ -140,18 +125,18 @@ export function TypeaheadComboBox() {
               <button
                 disabled={skip === 0}
                 onClick={() => {
-                  if (skip >= take) {
-                    setSkip(skip - take);
+                  if (skip >= props.pageSize) {
+                    setSkip(skip - props.pageSize);
                   }
                 }}
               >
                 &#60;
               </button>
               <button
-                disabled={skip >= pagination.total - take}
+                disabled={skip >= pagination.total - props.pageSize}
                 onClick={() => {
-                  if (skip < pagination.total - take) {
-                    setSkip(skip + take);
+                  if (skip < pagination.total - props.pageSize) {
+                    setSkip(skip + props.pageSize);
                   }
                 }}
               >
