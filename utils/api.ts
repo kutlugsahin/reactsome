@@ -48,3 +48,14 @@ export const findCities = (
 export interface CancellablePromise<T> extends Promise<T> {
   cancel: () => void;
 }
+
+
+class ExtendedPromise<T> extends Promise<T> {
+  constructor(resolver: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void) {
+    super(resolver);
+  }
+}
+
+async function F(): ExtendedPromise<number> {
+  return null;
+}

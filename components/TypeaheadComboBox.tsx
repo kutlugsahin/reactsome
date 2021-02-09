@@ -75,7 +75,10 @@ export function TypeaheadComboBox<T>(props: {
       setTimeout(async () => {
         setLoadingMode(true);
         fetcher = props.fetchData(filter, skip, props.pageSize);
-        fetcher.then(setPagination);
+        fetcher.then((items) => {
+          setPagination(items);
+          setLoadingMode(false);
+        });
       }, 250)
     );
 
